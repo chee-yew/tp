@@ -289,6 +289,46 @@ name, quantity and status; missing quantities are displayed as blank values.
 The replacement person preserves the customer's postal code. `Preorder.withItems` preserves the fulfilment date,
 method and handover notes, including when the final item is removed. Missing optional fields remain absent.
 
+### Tagging a customer
+
+`tag INDEX t/TAG` adds one tag to a customer in the displayed list, so customers can be grouped (e.g. `regular`).
+
+* `TagCommandParser` and `UntagCommandParser` share two helpers in `ParserUtil`, so both commands validate input
+  identically. `parsePreambleIndex` is called first, so an invalid index is reported before any tag problem.
+* `parseSingleTag` then requires exactly one `t/` prefix and validates its trimmed value through `parseTag`.
+  A missing index or `t/` shows usage instructions; an invalid tag shows `Tag.MESSAGE_CONSTRAINTS`.
+* `TagCommand` resolves the customer from `model.getFilteredPersonList()`, so `INDEX` refers to the displayed list,
+  and an out-of-range index raises a `CommandException`.
+* If the customer already has the tag, the command returns `NAME already has tag [TAG]. No changes made.` and leaves
+  the model unchanged.
+* Otherwise, it copies the tag set, adds the tag, and builds a new `Person` with the same name, phone, email,
+  address, postal code and preorder. `Model#setPerson` replaces the customer without resetting the active search.
+
+The flow through the `Logic` component is the same as in the `delete 1` sequence diagram in the
+[Logic component](#logic-component) section, with `TagCommandParser` and `TagCommand` in place of the delete classes.
+
+#### Design considerations:
+
+**Aspect: How tags are compared:**
+
+* **Alternative 1 (current choice):** `Tag#equals` ignores case, and `Tag#hashCode` uses the lowercase name.
+  * Pros: `VIP` and `vip` are one tag, matching how users think of tags; `untag` and `find t/` behave the same way.
+  * Cons: The customer keeps the spelling of the tag that was added first.
+
+* **Alternative 2:** Compare tags case-sensitively, as in AB3.
+  * Pros: Simpler, and keeps the exact spelling typed.
+  * Cons: A customer can end up with near-identical tags such as `VIP` and `vip`.
+
+**Aspect: How a duplicate tag is handled:**
+
+* **Alternative 1 (current choice):** Show a note and make no changes.
+  * Pros: The user's goal (the customer has the tag) is already met, so it is not treated as a mistake.
+  * Cons: The command succeeds without changing anything, which users must read the message to notice.
+
+* **Alternative 2:** Reject the command with an error.
+  * Pros: Clearly signals that nothing changed.
+  * Cons: Treats a harmless repeat as a failure, which may confuse users.
+
 ### \[Proposed\] Undo/redo feature
 
 #### Proposed Implementation
